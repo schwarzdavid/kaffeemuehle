@@ -11,8 +11,9 @@ const uint8_t LOADCELL_SCK_PIN = 3;
 const uint8_t SERVO_DT_PIN = 6;
 
 const uint8_t LED_GREEN_PIN = 5;
-const uint8_t LED_RED_PIN = 6;
+const uint8_t LED_RED_PIN = 4;
 
+const uint8_t BTN_RESERVE_PIN = A0;
 const uint8_t BTN_PLUS_PIN = A1;
 const uint8_t BTN_MINUS_PIN = A2;
 const uint8_t BTN_START_PIN = A3;
@@ -22,7 +23,6 @@ Servo servo;
 Adafruit_SSD1306 display(128, 32, &Wire, -1);
 
 uint16_t servoPosition = 0;
-uint8_t currentLed = LOW;
 
 char servoPositionChars[3];
 char weightChars[128];
@@ -31,41 +31,49 @@ void setup()
 {
   Serial.begin(9600);
   Serial.println("Setup in progress");
+
+  Serial.println("Setup scale");
   scale.begin(LOADCELL_DT_PIN, LOADCELL_SCK_PIN);
+
+  Serial.println("Setup servo");
   servo.attach(SERVO_DT_PIN);
+  servo.write(servoPosition);
 
   Serial.println("Begin display setup");
-  /*if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
       Serial.println("Cannot connect display");
       for (;;)
         ;
-  }*/
-
-  pinMode(LED_GREEN_PIN, OUTPUT);
-
-  Serial.println("Display setup complete");
-  /* display.clearDisplay();
+  }
+  display.clearDisplay();
   display.display();
   display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE); */
+  display.setTextColor(SSD1306_WHITE);
+  Serial.println("Display setup complete");
+
+  pinMode(LED_GREEN_PIN, OUTPUT);
+  pinMode(LED_RED_PIN, OUTPUT);
+  pinMode(BTN_MINUS_PIN, INPUT_PULLUP);
+  pinMode(BTN_PLUS_PIN, INPUT_PULLUP);
+  pinMode(BTN_START_PIN, INPUT_PULLUP);
+  pinMode(BTN_RESERVE_PIN, INPUT_PULLUP);
+
   delay(1000);
 }
 
 void loop()
 {
-  Serial.print("Servo position: ");
-  Serial.println(servoPosition);
 
-  /* display.clearDisplay();
+  display.clearDisplay();
   display.setCursor(0, 0);
   display.write("Servo: ");
   itoa(servoPosition, servoPositionChars, 10);
-  display.write(servoPositionChars); */
+  display.write(servoPositionChars);
 
   servo.write(servoPosition);
   servoPosition = (servoPosition + 30) % 210;
 
-  /* display.setCursor(0, 12);
+  display.setCursor(0, 12);
 
   if (scale.wait_ready_timeout(1000)) {
     long reading = scale.read();
@@ -82,14 +90,15 @@ void loop()
     display.write("Keine Waage");
   }
 
-  display.display(); */
+  display.display();
 
-  if(currentLed == LOW) {
-    currentLed = HIGH;
-  } else {
-    currentLed = LOW;
+  if(digitalRead(BTN_MINUS_PIN) == LOW || digitalRead(BTN_PLUS_PIN) == LOW || digitalRead(BTN_START_PIN) == LOW || digitalRead(BTN_RESERVE_PIN) == LOW) {
+    digitalWrite(LED_GREEN_PIN, HIGH);
+    digitalWrite(LED_RED_PIN, HIGH);
+  } else if(digitalRead(BTN_PLUS_PIN) == HIGH) {
+    digitalWrite(LED_GREEN_PIN, LOW);
+    digitalWrite(LED_RED_PIN, LOW);
   }
-  digitalWrite(LED_GREEN_PIN, currentLed);
 
   delay(2000);
 }
