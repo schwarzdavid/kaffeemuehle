@@ -7,7 +7,7 @@
 #include "Adafruit_SSD1306.h"
 #include "Button2.h"
 #include "EEPROM.h"
-#include "Fonts/FreeSans18pt7b.h"
+#include "Fonts/FreeSans12pt7b.h"
 
 //////////////////////////////////////////////////
 // DEFINE PINS
@@ -40,7 +40,24 @@ Button2 btnStart, btnPlus, btnMinus, btnReset;
 uint16_t servoPosition = 0;
 uint8_t targetWeight = 16;
 
-char servoPositionChars[3], weightChars[128];
+//////////////////////////////////////////////////
+// HELPER FUNCTIONS
+//////////////////////////////////////////////////
+
+void printText(const String text) {
+  int16_t offsetX, offsetY;
+  uint16_t width, height;
+  display.getTextBounds(text, 0, 0, &offsetX, &offsetY, &width, &height);
+
+  display.clearDisplay();
+  display.setCursor((display.width() - offsetX - width) / 2, 26);
+  display.print(text);
+  display.display();
+}
+
+void printText(const char chars[]) {
+  printText(String(chars));
+}
 
 //////////////////////////////////////////////////
 // CALLBACKS
@@ -70,7 +87,10 @@ void checkBothPlusMinusPressed() {
       targetSavedThisHold = true;
       Serial.println("Saved target weight to EEPROM");
 
+      printText("Saved");
+      delay(3000);
       btnPlus.resetPressedState();
+      btnMinus.resetPressedState();
     }
   } else {
     bothPressedSince = 0;
@@ -138,7 +158,7 @@ void setup()
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
-  display.setFont(&FreeSans18pt7b);
+  display.setFont(&FreeSans12pt7b);
   display.display();
 
   delay(1000);
@@ -154,18 +174,9 @@ void loop()
 
   checkBothPlusMinusPressed();
 
-  display.clearDisplay();
-  display.setCursor(10, 30);
-  display.print(targetWeight);
-  display.print("G");
-  display.display();
+  printText(String(targetWeight) + " g");
 
-  /*display.clearDisplay();
-  display.setCursor(0, 0);
-  display.write("Servo: ");
-  itoa(servoPosition, servoPositionChars, 10);
-  display.write(servoPositionChars);
-
+/*
   servo.write(servoPosition);
   servoPosition = (servoPosition + 30) % 210;
 
