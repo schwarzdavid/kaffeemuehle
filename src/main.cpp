@@ -1,28 +1,30 @@
-#include <Arduino.h>
+#include "Arduino.h"
 #include "HX711.h"
 #include "Servo.h"
 #include "SPI.h"
 #include "Wire.h"
 #include "Adafruit_GFX.h"
 #include "Adafruit_SSD1306.h"
+#include "Button2.h"
+#include "EEPROM.h"
 
-const uint8_t LOADCELL_DT_PIN = 2;
-const uint8_t LOADCELL_SCK_PIN = 3;
-const uint8_t SERVO_DT_PIN = 6;
-
-const uint8_t LED_GREEN_PIN = 5;
-const uint8_t LED_RED_PIN = 4;
-
-const uint8_t BTN_RESERVE_PIN = A0;
-const uint8_t BTN_PLUS_PIN = A1;
-const uint8_t BTN_MINUS_PIN = A2;
-const uint8_t BTN_START_PIN = A3;
+const uint8_t LOADCELL_DT_PIN = 2, 
+              LOADCELL_SCK_PIN = 3, 
+              SERVO_DT_PIN = 6, 
+              LED_GREEN_PIN = 5,
+              LED_RED_PIN = 4,
+              BTN_RESET_PIN = A0,
+              BTN_PLUS_PIN = A1,
+              BTN_MINUS_PIN = A2,
+              BTN_START_PIN = A3;
 
 HX711 scale;
 Servo servo;
 Adafruit_SSD1306 display(128, 32, &Wire, -1);
+Button2 btnStart, btnPlus, btnMinus, btnReset;
 
 uint16_t servoPosition = 0;
+uint8_t savedTargetWeightAddress = 0;
 
 char servoPositionChars[3];
 char weightChars[128];
@@ -37,28 +39,30 @@ void setup()
 
   Serial.println("Setup servo");
   servo.attach(SERVO_DT_PIN);
-  servo.write(servoPosition);
+  servo.write(0);
 
-  Serial.println("Begin display setup");
+  Serial.println("Setup buttons");
+  btnStart.begin(BTN_START_PIN);
+  btnPlus.begin(BTN_PLUS_PIN);
+  btnMinus.begin(BTN_MINUS_PIN);
+
+  Serial.println("Setup display");
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
       Serial.println("Cannot connect display");
-      for (;;)
-        ;
   }
   display.clearDisplay();
-  display.display();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
-  Serial.println("Display setup complete");
+  display.display();
 
+  Serial.println("Setup leds");
   pinMode(LED_GREEN_PIN, OUTPUT);
   pinMode(LED_RED_PIN, OUTPUT);
-  pinMode(BTN_MINUS_PIN, INPUT_PULLUP);
-  pinMode(BTN_PLUS_PIN, INPUT_PULLUP);
-  pinMode(BTN_START_PIN, INPUT_PULLUP);
-  pinMode(BTN_RESERVE_PIN, INPUT_PULLUP);
 
+  digitalWrite(LED_GREEN_PIN, HIGH);
+  digitalWrite(LED_RED_PIN, HIGH);
   delay(1000);
+  digitalWrite(LED_GREEN_PIN, LOW);
 }
 
 void loop()
@@ -92,7 +96,7 @@ void loop()
 
   display.display();
 
-  if(digitalRead(BTN_MINUS_PIN) == LOW || digitalRead(BTN_PLUS_PIN) == LOW || digitalRead(BTN_START_PIN) == LOW || digitalRead(BTN_RESERVE_PIN) == LOW) {
+  if(digitalRead(BTN_MINUS_PIN) == LOW || digitalRead(BTN_PLUS_PIN) == LOW || digitalRead(BTN_START_PIN) == LOW || digitalRead(BTN_RESET_PIN) == LOW) {
     digitalWrite(LED_GREEN_PIN, HIGH);
     digitalWrite(LED_RED_PIN, HIGH);
   } else if(digitalRead(BTN_PLUS_PIN) == HIGH) {
