@@ -13,9 +13,9 @@
 // DEFINE PINS
 //////////////////////////////////////////////////
 
-const uint8_t LOADCELL_DT_PIN = 2, 
-              LOADCELL_SCK_PIN = 3, 
-              SERVO_DT_PIN = 6, 
+const uint8_t LOADCELL_DT_PIN = 2,
+              LOADCELL_SCK_PIN = 3,
+              SERVO_DT_PIN = 6,
               LED_GREEN_PIN = 5,
               LED_RED_PIN = 4,
               BTN_PLUS_PIN = A0,
@@ -23,13 +23,26 @@ const uint8_t LOADCELL_DT_PIN = 2,
               BTN_START_PIN = A2,
               BTN_RESET_PIN = A3;
 
+//////////////////////////////////////////////////
+// GLOBAL CONSTANTS
+//////////////////////////////////////////////////
+
 const uint8_t BTN_CLICK_DEBOUNCE_MS = 30;
 const uint16_t BTN_PERSIST_DEBOUNCE_MS = 1000;
 
 const uint8_t TARGET_WEIGHT_EEPROM_ADDRESS = 0;
 
+const uint8_t STATE_TARE = 0,
+              STATE_READY = 1,
+              STATE_RUNNING = 2;
+
+const float SCALE_FACTOR = 2160.12;
+
+uint16_t SERVO_RESTING_POSITION = 0;
+uint16_t SERVO_ACTIVE_POSITION = 20;
+
 //////////////////////////////////////////////////
-// DEFINE GLOBAL VARIABLES
+// GLOBAL VARIABLES
 //////////////////////////////////////////////////
 
 HX711 scale;
@@ -39,23 +52,26 @@ Button2 btnStart, btnPlus, btnMinus, btnReset;
 
 uint16_t servoPosition = 0;
 uint8_t targetWeight = 16;
+uint8_t currentState = STATE_TARE;
 
 //////////////////////////////////////////////////
 // HELPER FUNCTIONS
 //////////////////////////////////////////////////
 
-void printText(const String text) {
+void printText(const String text)
+{
   int16_t offsetX, offsetY;
   uint16_t width, height;
+  display.setTextSize(1);
   display.getTextBounds(text, 0, 0, &offsetX, &offsetY, &width, &height);
-
   display.clearDisplay();
   display.setCursor((display.width() - offsetX - width) / 2, 26);
   display.print(text);
   display.display();
 }
 
-void printText(const char chars[]) {
+void printText(const char chars[])
+{
   printText(String(chars));
 }
 
@@ -63,12 +79,18 @@ void printText(const char chars[]) {
 // CALLBACKS
 //////////////////////////////////////////////////
 
-void onButtonPlusMinusClick(Button2& btn) {
-  if(btn.getID() == BTN_PLUS_PIN) {
+void onButtonPlusMinusClick(Button2 &btn)
+{
+  if (btn.getID() == BTN_PLUS_PIN)
+  {
     targetWeight++;
-  } else if(btn.getID() == BTN_MINUS_PIN) {
+  }
+  else if (btn.getID() == BTN_MINUS_PIN)
+  {
     targetWeight--;
-  } else {
+  }
+  else
+  {
     return;
   }
 
@@ -77,12 +99,17 @@ void onButtonPlusMinusClick(Button2& btn) {
 }
 
 bool targetSavedThisHold = false;
-unsigned long bothPressedSince = 0;
-void checkBothPlusMinusPressed() {
-  if(btnPlus.isPressed() && btnMinus.isPressed()) {
-    if(bothPressedSince == 0) {
-      bothPressedSince = millis();
-    } else if(targetSavedThisHold == false && millis() - bothPressedSince >= BTN_PERSIST_DEBOUNCE_MS) {
+unsigned long plusMinusPressedSince = 0;
+void checkBothPlusMinusPressed()
+{
+  if (btnPlus.isPressed() && btnMinus.isPressed())
+  {
+    if (plusMinusPressedSince == 0)
+    {
+      plusMinusPressedSince = millis();
+    }
+    else if (targetSavedThisHold == false && millis() - plusMinusPressedSince >= BTN_PERSIST_DEBOUNCE_MS)
+    {
       EEPROM.update(TARGET_WEIGHT_EEPROM_ADDRESS, targetWeight);
       targetSavedThisHold = true;
       Serial.println("Saved target weight to EEPROM");
@@ -92,13 +119,40 @@ void checkBothPlusMinusPressed() {
       btnPlus.resetPressedState();
       btnMinus.resetPressedState();
     }
-  } else {
-    bothPressedSince = 0;
+  }
+  else
+  {
+    plusMinusPressedSince = 0;
 
     // Allow new save after both buttons have been released
-    if(!btnPlus.isPressed() && !btnMinus.isPressed()) {
+    if (!btnPlus.isPressed() && !btnMinus.isPressed())
+    {
       targetSavedThisHold = false;
     }
+  }
+}
+
+void onButtonStartClick(Button2 &btn) {
+  if(currentState == STATE_TARE) {
+    scale.tare();
+    currentState = STATE_READY;
+    return;
+  }
+
+  if(currentState == STATE_READY) {
+    if(scale.get_units(5) < 60) {
+      printText("CUP");
+      delay(3000);
+      return;
+    }
+    currentState = STATE_RUNNING;
+    return;
+  }
+
+  if(currentState == STATE_RUNNING) {
+    Serial.println("Im here");
+    currentState = STATE_READY;
+    return;
   }
 }
 
@@ -120,7 +174,8 @@ void setup()
   Serial.println("Setup saved target weight");
   uint8_t savedTargetWeight;
   EEPROM.get(TARGET_WEIGHT_EEPROM_ADDRESS, savedTargetWeight);
-  if(savedTargetWeight != 255) {
+  if (savedTargetWeight != 255)
+  {
     targetWeight = savedTargetWeight;
     Serial.print("Loaded previously saved target weight: ");
     Serial.println(targetWeight);
@@ -128,16 +183,20 @@ void setup()
 
   Serial.println("Setup scale");
   scale.begin(LOADCELL_DT_PIN, LOADCELL_SCK_PIN);
+  scale.set_scale(SCALE_FACTOR);
+  scale.wait_ready_timeout(10000);
 
   Serial.println("Setup servo");
   servo.attach(SERVO_DT_PIN);
-  servo.write(0);
+  servo.write(SERVO_RESTING_POSITION);
 
   // BUTTON SETUP
   Serial.println("Setup buttons");
 
   // Start
   btnStart.begin(BTN_START_PIN);
+  btnStart.setDebounceTime(BTN_CLICK_DEBOUNCE_MS);
+  btnStart.setClickHandler(onButtonStartClick);
 
   // Plus
   btnPlus.begin(BTN_PLUS_PIN);
@@ -152,60 +211,79 @@ void setup()
   btnMinus.setTapHandler(onButtonPlusMinusClick);
 
   Serial.println("Setup display");
-  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-      Serial.println("Cannot connect display");
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
+  {
+    Serial.println("Cannot connect display");
   }
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.setFont(&FreeSans12pt7b);
   display.display();
+}
 
-  delay(1000);
+void loopTare() {
   digitalWrite(LED_GREEN_PIN, LOW);
+  digitalWrite(LED_RED_PIN, HIGH);
+
+  printText("TARE");
+
+  btnStart.loop();
+}
+
+void loopReady() {
+  digitalWrite(LED_GREEN_PIN, HIGH);
+  digitalWrite(LED_RED_PIN, LOW);
+
+  btnPlus.loop();
+  btnMinus.loop();
+  btnStart.loop();
+
+  checkBothPlusMinusPressed();
+  printText(String(targetWeight) + " g");
+}
+
+void mill() {
+  digitalWrite(LED_GREEN_PIN, HIGH);
+  digitalWrite(LED_RED_PIN, HIGH);
+
+  float startWeight = scale.get_units(5);
+
+  servo.write(SERVO_ACTIVE_POSITION);
+  delay(100);
+
+  while(currentState == STATE_RUNNING) {
+    float currentWeight = scale.get_units(5);
+    float milledCoffee = currentWeight - startWeight;
+
+
+    printText(String(milledCoffee) + " / " + String(targetWeight) + " g");
+
+    if(milledCoffee >= targetWeight) {
+      break;
+    }
+
+    btnStart.loop();
+  }
+
+  servo.write(SERVO_RESTING_POSITION);
+  delay(100);
+
+  currentState = STATE_READY;
 }
 
 void loop()
 {
-  btnPlus.loop();
-  btnMinus.loop();
-  btnStart.loop();
-  btnReset.loop();
-
-  checkBothPlusMinusPressed();
-
-  printText(String(targetWeight) + " g");
-
-/*
-  servo.write(servoPosition);
-  servoPosition = (servoPosition + 30) % 210;
-
-  display.setCursor(0, 12);
-
-  if (scale.wait_ready_timeout(1000)) {
-    long reading = scale.read();
-
-    Serial.print("Weight: ");
-    Serial.println(reading);
-
-    display.write("Gewicht: ");
-    itoa(reading, weightChars, 10);
-    display.write(weightChars);
-
-  } else {
-    Serial.println("Scale not found");
-    display.write("Keine Waage");
+  switch (currentState)
+  {
+  case STATE_TARE:
+    loopTare();
+    break;
+  case STATE_READY:
+    loopReady();
+    break;
+  case STATE_RUNNING:
+    mill();
+    break;
   }
-
-  display.display();
-
-  if(digitalRead(BTN_MINUS_PIN) == LOW || digitalRead(BTN_PLUS_PIN) == LOW || digitalRead(BTN_START_PIN) == LOW || digitalRead(BTN_RESET_PIN) == LOW) {
-    digitalWrite(LED_GREEN_PIN, HIGH);
-    digitalWrite(LED_RED_PIN, HIGH);
-  } else if(digitalRead(BTN_PLUS_PIN) == HIGH) {
-    digitalWrite(LED_GREEN_PIN, LOW);
-    digitalWrite(LED_RED_PIN, LOW);
-  }
-
-  delay(2000);*/
 }
